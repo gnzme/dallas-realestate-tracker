@@ -121,8 +121,10 @@ def clean_listings(raw_results):
             "days_on_market":    p.get("daysOnZillow"),
             "tax_assessed":      tax.get("taxAssessedValue"),
             "tax_year":          tax.get("taxAssessmentYear"),
+            #URL
+            "listing_url": "https://www.zillow.com" + p.get("detailUrl", ""),
             # Media
-            "photo_url":         photo.get("mediumSizeLink", ""),
+            "photo_url":   p.get("media", {}).get("propertyPhotoLinks", {}).get("mediumSizeLink", ""),
             # Meta
             "fetched_at":        datetime.now().strftime("%Y-%m-%d %H:%M")
         })
@@ -172,28 +174,63 @@ def print_summary(df):
         print(f"    Rebaja promedio: ${cuts['price_change'].mean():,.0f}")
     print("="*52)
 
+def fetch_rentals(location="Dallas, TX", pages=2):
+    """Obtiene listings For Rent"""
+    all_results = []
+
+    for page in range(1, pages + 1):
+        params = {
+            "location":      location,
+            "listingStatus": "For_Rent",
+            "pageSize":      500,
+            "page":          page,
+            "sortOrder":     "Rental_Priority_Score"
+        }
+        try:
+            print(f"  Fetching rentals página {page}/{pages}...", end=" ")
+            response = requests.get(
+                BASE_URL, headers=HEADERS,
+                params=params, timeout=15
+            )
+            if response.status_code != 200:
+                print(f"✗ Error {response.status_code}")
+                break
+            data    = response.json()
+            results = data.get("searchResults", [])
+            all_results.extend(results)
+            total   = data.get("resultsCount", {}).get("totalMatchingCount", 0)
+            print(f"✓ {len(results)} rentals (total: {total:,})")
+            time.sleep(2)
+        except Exception as e:
+            print(f"✗ Error: {e}")
+            break
+
+    return all_results
 
 # ─── Main ────────────────────────────────────────────────────
 if __name__ == "__main__":
-    print("\n Dallas Real Estate Tracker — Semana 1")
+    print("\n Dallas Real Estate Tracker — Scraper")
     print(" " + "─"*40)
 
-    print("\n[1/3] Fetching listings reales de Zillow...")
-    raw = fetch_listings(location="Dallas, TX", pages=2)
-    print(f"\n  Total raw results: {len(raw)}")
+    # ── For Sale ──────────────────────────────
+    print("\n[1/2] Scraping FOR SALE...")
+    raw_sale = fetch_listings(location="Dallas, TX", pages=2)
+    cleaned_sale = clean_listings(raw_sale)
+    df_sale = pd.DataFrame(cleaned_sale)
+    df_sale["listing_type"] = "For Sale"
 
-    print("\n[2/3] Limpiando y estructurando datos...")
-    cleaned = clean_listings(raw)
-    df = pd.DataFrame(cleaned)
-    print(f"  DataFrame: {df.shape[0]:,} filas × {df.shape[1]} columnas")
+    date_str = datetime.now().strftime("%Y%m%d")
+    df_sale.to_csv(f"data/dallas_listings_{date_str}.csv", index=False)
+    print(f"  ✓ {len(df_sale):,} propiedades en venta guardadas")
 
-    print("\n[3/3] Guardando CSV...")
-    save_csv(df)
+    # ── For Rent ──────────────────────────────
+    print("\n[2/2] Scraping FOR RENT...")
+    raw_rent = fetch_rentals(location="Dallas, TX", pages=2)
+    cleaned_rent = clean_listings(raw_rent)
+    df_rent = pd.DataFrame(cleaned_rent)
+    df_rent["listing_type"] = "For Rent"
 
-    print_summary(df)
+    df_rent.to_csv(f"data/dallas_rentals_{date_str}.csv", index=False)
+    print(f"  ✓ {len(df_rent):,} propiedades en arriendo guardadas")
 
-    print("\n  Vista previa:")
-    cols = ["address", "zipcode", "price", "bedrooms", "sqft", "days_on_market"]
-    print(df[cols].head(8).to_string(index=False))
-
-    print("\n✓ Semana 1 completada — datos reales de Dallas listos.\n")
+    print("\n✓ Scraping completo.\n")
