@@ -81,6 +81,17 @@ def load_model():
     return model, encoders, features, stats
 
 model, encoders, features, stats = load_model()
+
+# ─── Scraped date ─────────────────────────────────────────────
+import os
+csv_files    = glob.glob("data/dallas_listings_*.csv")
+if csv_files:
+    latest_file  = max(csv_files)
+    filename     = os.path.basename(latest_file)
+    date_str     = filename.replace("dallas_listings_", "").replace(".csv", "")
+    scraped_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}"
+else:
+    scraped_date = "Unknown"
  
  
 # ─── Sidebar filters ─────────────────────────────────────────
@@ -157,16 +168,6 @@ tab1, tab2 = st.tabs(["📊 Market Dashboard", "🤖 Price Predictor"])
 with tab1:
 
     st.markdown("# 🏠 Dallas Real Estate Market Tracker")
-    # Obtener fecha del CSV más reciente
-    import os
-    csv_files = glob.glob("data/dallas_listings_*.csv")
-    if csv_files:
-        latest_file = max(csv_files)
-        filename    = os.path.basename(latest_file)
-        date_str    = filename.replace("dallas_listings_", "").replace(".csv", "")
-        scraped_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}"
-    else:
-        scraped_date = "Unknown"
 
     st.markdown(
         f"Showing **{len(df):,}** properties · "
