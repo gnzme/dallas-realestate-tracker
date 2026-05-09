@@ -9,7 +9,7 @@ An interactive real estate dashboard built with Python and Streamlit, using live
 ## Features
 
 **Market Dashboard**
-- Live data from Zillow API — 1,000+ real Dallas property listings
+- Real data scraped from Zillow API — 1,000+ Dallas property listings (updated manually or via automation)
 - Interactive filters: listing type, property type, price range, days on market, zip code
 - Property map with color-coded pricing by location
 - 5 analytical charts: price distribution, average by zip, price vs sqft, days on market, price cuts
