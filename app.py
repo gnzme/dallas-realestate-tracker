@@ -68,6 +68,19 @@ def load_data():
     return df
  
 df_full = load_data()
+
+@st.cache_resource
+def load_model():
+    import joblib, os
+    if not os.path.exists("model/price_model.joblib"):
+        return None, None, None, None
+    model    = joblib.load("model/price_model.joblib")
+    encoders = joblib.load("model/encoders.joblib")
+    features = joblib.load("model/features.joblib")
+    stats    = joblib.load("model/model_stats.joblib")
+    return model, encoders, features, stats
+
+model, encoders, features, stats = load_model()
  
  
 # ─── Sidebar filters ─────────────────────────────────────────
@@ -140,335 +153,498 @@ if sel_zips:
  
  
 # ─── Header ──────────────────────────────────────────────────
-st.markdown("# 🏠 Dallas Real Estate Market Tracker")
-st.markdown(
-    f"Showing **{len(df):,}** properties · "
-    f"Live data via Zillow API · Dallas, TX"
-)
-st.markdown("---")
- 
- 
-# ─── KPIs ────────────────────────────────────────────────────
-k1, k2, k3, k4, k5 = st.columns(5)
- 
-k1.metric("Total listings", f"{len(df):,}")
- 
-price_label = (
-    "Median price / month"
-    if sel_listing_type == ["For Rent"]
-    else "Median price"
-)
-k2.metric(price_label, f"${df['price'].median()/1000:,.0f}k")
-k3.metric("Median price / sqft",  f"${df['price_per_sqft'].median():,.0f}")
-k4.metric("Median days on market", f"{df['days_on_market'].median():.0f} days")
-k5.metric("With price cut",        f"{df['has_price_cut'].mean()*100:.1f}%")
- 
-st.markdown("---")
- 
- 
-# ─── Map ─────────────────────────────────────────────────────
-st.markdown("#### 🗺️ Property Map")
- 
-map_df = df[["latitude", "longitude", "price", "address",
-             "zipcode", "bedrooms", "days_on_market"]].dropna(
-    subset=["latitude", "longitude"]
-).copy()
- 
-if len(map_df) > 0:
-    fig_map = px.scatter_mapbox(
-        map_df,
-        lat                    = "latitude",
-        lon                    = "longitude",
-        color                  = "price",
-        size                   = "price",
-        size_max               = 12,
-        zoom                   = 10,
-        center                 = {"lat": 32.7767, "lon": -96.7970},
-        color_continuous_scale = ["#00b4d8", "#f4a261", "#e07a5f"],
-        mapbox_style           = "carto-positron",
-        hover_name             = "address",
-        hover_data             = {
-            "price":          ":$,.0f",
-            "zipcode":        True,
-            "bedrooms":       True,
-            "days_on_market": True,
-            "latitude":       False,
-            "longitude":      False
-        },
-        labels = {
-            "price":          "Price",
-            "zipcode":        "Zip",
-            "bedrooms":       "Bedrooms",
-            "days_on_market": "Days on market"
-        },
-        height = 500
+tab1, tab2 = st.tabs(["📊 Market Dashboard", "🤖 Price Predictor"])
+with tab1:
+
+    st.markdown("# 🏠 Dallas Real Estate Market Tracker")
+    st.markdown(
+        f"Showing **{len(df):,}** properties · "
+        f"Live data via Zillow API · Dallas, TX"
     )
-    fig_map.update_layout(
-        margin             = dict(t=0, b=0, l=0, r=0),
-        coloraxis_colorbar = dict(
-            title      = "Price",
-            tickprefix = "$",
-            tickformat = ",.0f"
-        ),
-        paper_bgcolor = "rgba(0,0,0,0)"
+    st.markdown("---")
+    
+    
+    # ─── KPIs ────────────────────────────────────────────────────
+    k1, k2, k3, k4, k5 = st.columns(5)
+    
+    k1.metric("Total listings", f"{len(df):,}")
+    
+    price_label = (
+        "Median price / month"
+        if sel_listing_type == ["For Rent"]
+        else "Median price"
     )
-    st.plotly_chart(fig_map, use_container_width=True)
-else:
-    st.info("No coordinates available to display the map.")
- 
-st.markdown("---")
- 
- 
-# ─── Row 1: Price distribution + Price by zip ────────────────
-col1, col2 = st.columns(2)
- 
-with col1:
-    st.markdown("#### Price Distribution")
-    fig = px.histogram(
-        df, x="price_M", nbins=50,
-        labels={"price_M": "Price (thousands USD)", "count": "Properties"},
-        color_discrete_sequence=["#00b4d8"]
-    )
-    fig.add_vline(
-        x=df["price"].median()/1000,
-        line_dash="dash", line_color="#e07a5f", line_width=2,
-        annotation_text=f"Median ${df['price'].median()/1000:,.0f}k",
-        annotation_position="top right"
-    )
-    fig.update_layout(
-        showlegend    = False,
-        margin        = dict(t=20, b=20, l=20, r=20),
-        height        = 350,
-        plot_bgcolor  = "rgba(0,0,0,0)",
-        paper_bgcolor = "rgba(0,0,0,0)"
-    )
-    fig.update_xaxes(tickprefix="$", ticksuffix="k")
-    st.plotly_chart(fig, use_container_width=True)
- 
-with col2:
-    st.markdown("#### Average Price by Zip Code (top 12)")
-    zip_avg = (
-        df.groupby("zipcode")["price"]
-        .agg(["mean", "count"])
-        .query("count >= 2")
-        .sort_values("mean", ascending=False)
-        .head(12)
-        .reset_index()
-    )
-    if len(zip_avg) == 0:
-        st.info("Not enough data to display this chart with the current filters.")
+    k2.metric(price_label, f"${df['price'].median()/1000:,.0f}k")
+    k3.metric("Median price / sqft",  f"${df['price_per_sqft'].median():,.0f}")
+    k4.metric("Median days on market", f"{df['days_on_market'].median():.0f} days")
+    k5.metric("With price cut",        f"{df['has_price_cut'].mean()*100:.1f}%")
+    
+    st.markdown("---")
+    
+    
+    # ─── Map ─────────────────────────────────────────────────────
+    st.markdown("#### 🗺️ Property Map")
+    
+    map_df = df[["latitude", "longitude", "price", "address",
+                "zipcode", "bedrooms", "days_on_market"]].dropna(
+        subset=["latitude", "longitude"]
+    ).copy()
+    
+    if len(map_df) > 0:
+        fig_map = px.scatter_mapbox(
+            map_df,
+            lat                    = "latitude",
+            lon                    = "longitude",
+            color                  = "price",
+            size                   = "price",
+            size_max               = 12,
+            zoom                   = 10,
+            center                 = {"lat": 32.7767, "lon": -96.7970},
+            color_continuous_scale = ["#00b4d8", "#f4a261", "#e07a5f"],
+            mapbox_style           = "carto-positron",
+            hover_name             = "address",
+            hover_data             = {
+                "price":          ":$,.0f",
+                "zipcode":        True,
+                "bedrooms":       True,
+                "days_on_market": True,
+                "latitude":       False,
+                "longitude":      False
+            },
+            labels = {
+                "price":          "Price",
+                "zipcode":        "Zip",
+                "bedrooms":       "Bedrooms",
+                "days_on_market": "Days on market"
+            },
+            height = 500
+        )
+        fig_map.update_layout(
+            margin             = dict(t=0, b=0, l=0, r=0),
+            coloraxis_colorbar = dict(
+                title      = "Price",
+                tickprefix = "$",
+                tickformat = ",.0f"
+            ),
+            paper_bgcolor = "rgba(0,0,0,0)"
+        )
+        st.plotly_chart(fig_map, use_container_width=True)
     else:
-        zip_avg["label"]   = zip_avg.apply(
-            lambda r: f"${r['mean']/1000:,.0f}k ({int(r['count'])})", axis=1
+        st.info("No coordinates available to display the map.")
+    
+    st.markdown("---")
+    
+    
+    # ─── Row 1: Price distribution + Price by zip ────────────────
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("#### Price Distribution")
+        fig = px.histogram(
+            df, x="price_M", nbins=50,
+            labels={"price_M": "Price (thousands USD)", "count": "Properties"},
+            color_discrete_sequence=["#00b4d8"]
         )
-        zip_avg["zipcode"] = zip_avg["zipcode"].astype(str)
-        fig2 = px.bar(
-            zip_avg, x="mean", y="zipcode",
+        fig.add_vline(
+            x=df["price"].median()/1000,
+            line_dash="dash", line_color="#e07a5f", line_width=2,
+            annotation_text=f"Median ${df['price'].median()/1000:,.0f}k",
+            annotation_position="top right"
+        )
+        fig.update_layout(
+            showlegend    = False,
+            margin        = dict(t=20, b=20, l=20, r=20),
+            height        = 350,
+            plot_bgcolor  = "rgba(0,0,0,0)",
+            paper_bgcolor = "rgba(0,0,0,0)"
+        )
+        fig.update_xaxes(tickprefix="$", ticksuffix="k")
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        st.markdown("#### Average Price by Zip Code (top 12)")
+        zip_avg = (
+            df.groupby("zipcode")["price"]
+            .agg(["mean", "count"])
+            .query("count >= 2")
+            .sort_values("mean", ascending=False)
+            .head(12)
+            .reset_index()
+        )
+        if len(zip_avg) == 0:
+            st.info("Not enough data to display this chart with the current filters.")
+        else:
+            zip_avg["label"]   = zip_avg.apply(
+                lambda r: f"${r['mean']/1000:,.0f}k ({int(r['count'])})", axis=1
+            )
+            zip_avg["zipcode"] = zip_avg["zipcode"].astype(str)
+            fig2 = px.bar(
+                zip_avg, x="mean", y="zipcode",
+                orientation="h",
+                text="label",
+                labels={"mean": "Average price (USD)", "zipcode": "Zip"},
+                color="mean",
+                color_continuous_scale=["#00b4d8", "#e07a5f"]
+            )
+            fig2.update_traces(textposition="outside", textfont_size=10)
+            fig2.update_layout(
+                coloraxis_showscale = False,
+                margin              = dict(t=20, b=20, l=20, r=120),
+                height              = 350,
+                plot_bgcolor        = "rgba(0,0,0,0)",
+                paper_bgcolor       = "rgba(0,0,0,0)",
+                yaxis               = dict(type="category")
+            )
+            fig2.update_xaxes(tickprefix="$", tickformat=",.0f")
+            st.plotly_chart(fig2, use_container_width=True)
+    
+    
+    # ─── Row 2: Scatter + Boxplot ─────────────────────────────────
+    col3, col4 = st.columns(2)
+    
+    with col3:
+        st.markdown("#### Price vs Square Footage")
+        d_scatter = df[df["sqft"] < 8000].copy()
+        fig3 = px.scatter(
+            d_scatter,
+            x="sqft", y="price_M",
+            color="property_type",
+            opacity=0.55,
+            labels={
+                "sqft":          "Square footage (sqft)",
+                "price_M":       "Price (thousands USD)",
+                "property_type": "Type"
+            },
+            color_discrete_sequence=["#00b4d8","#e07a5f","#3d9970","#f4a261","#7c6fcd"],
+            hover_data=["zipcode", "bedrooms", "days_on_market"]
+        )
+        fig3.update_layout(
+            margin        = dict(t=20, b=20, l=20, r=20),
+            height        = 350,
+            plot_bgcolor  = "rgba(0,0,0,0)",
+            paper_bgcolor = "rgba(0,0,0,0)",
+            legend        = dict(orientation="h", y=-0.2)
+        )
+        fig3.update_yaxes(tickprefix="$", ticksuffix="k")
+        st.plotly_chart(fig3, use_container_width=True)
+    
+    with col4:
+        st.markdown("#### Days on Market by Property Type")
+        type_order = (
+            df.groupby("property_type")["days_on_market"]
+            .median().sort_values().index.tolist()
+        )
+        fig4 = px.box(
+            df[df["property_type"].isin(type_order)],
+            x="property_type", y="days_on_market",
+            category_orders={"property_type": type_order},
+            labels={
+                "property_type":  "Type",
+                "days_on_market": "Days on market"
+            },
+            color="property_type",
+            color_discrete_sequence=["#00b4d8","#3d9970","#e07a5f","#f4a261","#7c6fcd"]
+        )
+        fig4.update_layout(
+            showlegend    = False,
+            margin        = dict(t=20, b=20, l=20, r=20),
+            height        = 350,
+            plot_bgcolor  = "rgba(0,0,0,0)",
+            paper_bgcolor = "rgba(0,0,0,0)",
+            yaxis_range   = [0, df["days_on_market"].quantile(0.95) + 10]
+        )
+        st.plotly_chart(fig4, use_container_width=True)
+    
+    
+    # ─── Row 3: Price cuts + Table ───────────────────────────────
+    col5, col6 = st.columns([1, 1])
+    
+    with col5:
+        st.markdown("#### % with Price Cut by Zip Code")
+        cut_rate = (
+            df.groupby("zipcode")
+            .filter(lambda x: len(x) >= 5)
+            .groupby("zipcode")["has_price_cut"]
+            .mean().mul(100)
+            .sort_values(ascending=False)
+            .head(15)
+            .reset_index()
+        )
+        cut_rate.columns = ["zipcode", "pct_cut"]
+        avg_cut = cut_rate["pct_cut"].mean()
+        cut_rate["zipcode"] = cut_rate["zipcode"].astype(str)
+        
+        fig5 = px.bar(
+            cut_rate.sort_values("pct_cut"),
+            x="pct_cut", y="zipcode",
             orientation="h",
-            text="label",
-            labels={"mean": "Average price (USD)", "zipcode": "Zip"},
-            color="mean",
-            color_continuous_scale=["#00b4d8", "#e07a5f"]
+            color="pct_cut",
+            color_continuous_scale=["#00b4d8", "#e07a5f"],
+            labels={"pct_cut": "% with price cut", "zipcode": "Zip"}
         )
-        fig2.update_traces(textposition="outside", textfont_size=10)
-        fig2.update_layout(
+        fig5.add_vline(
+            x=avg_cut, line_dash="dash",
+            line_color="#f4a261", line_width=1.5,
+            annotation_text=f"Avg {avg_cut:.1f}%",
+            annotation_position="top right"
+        )
+        fig5.update_layout(
             coloraxis_showscale = False,
-            margin              = dict(t=20, b=20, l=20, r=120),
-            height              = 350,
+            margin              = dict(t=20, b=20, l=20, r=20),
+            height              = 400,
             plot_bgcolor        = "rgba(0,0,0,0)",
             paper_bgcolor       = "rgba(0,0,0,0)",
             yaxis               = dict(type="category")
         )
-        fig2.update_xaxes(tickprefix="$", tickformat=",.0f")
-        st.plotly_chart(fig2, use_container_width=True)
- 
- 
-# ─── Row 2: Scatter + Boxplot ─────────────────────────────────
-col3, col4 = st.columns(2)
- 
-with col3:
-    st.markdown("#### Price vs Square Footage")
-    d_scatter = df[df["sqft"] < 8000].copy()
-    fig3 = px.scatter(
-        d_scatter,
-        x="sqft", y="price_M",
-        color="property_type",
-        opacity=0.55,
-        labels={
-            "sqft":          "Square footage (sqft)",
-            "price_M":       "Price (thousands USD)",
-            "property_type": "Type"
-        },
-        color_discrete_sequence=["#00b4d8","#e07a5f","#3d9970","#f4a261","#7c6fcd"],
-        hover_data=["zipcode", "bedrooms", "days_on_market"]
-    )
-    fig3.update_layout(
-        margin        = dict(t=20, b=20, l=20, r=20),
-        height        = 350,
-        plot_bgcolor  = "rgba(0,0,0,0)",
-        paper_bgcolor = "rgba(0,0,0,0)",
-        legend        = dict(orientation="h", y=-0.2)
-    )
-    fig3.update_yaxes(tickprefix="$", ticksuffix="k")
-    st.plotly_chart(fig3, use_container_width=True)
- 
-with col4:
-    st.markdown("#### Days on Market by Property Type")
-    type_order = (
-        df.groupby("property_type")["days_on_market"]
-        .median().sort_values().index.tolist()
-    )
-    fig4 = px.box(
-        df[df["property_type"].isin(type_order)],
-        x="property_type", y="days_on_market",
-        category_orders={"property_type": type_order},
-        labels={
-            "property_type":  "Type",
-            "days_on_market": "Days on market"
-        },
-        color="property_type",
-        color_discrete_sequence=["#00b4d8","#3d9970","#e07a5f","#f4a261","#7c6fcd"]
-    )
-    fig4.update_layout(
-        showlegend    = False,
-        margin        = dict(t=20, b=20, l=20, r=20),
-        height        = 350,
-        plot_bgcolor  = "rgba(0,0,0,0)",
-        paper_bgcolor = "rgba(0,0,0,0)",
-        yaxis_range   = [0, df["days_on_market"].quantile(0.95) + 10]
-    )
-    st.plotly_chart(fig4, use_container_width=True)
- 
- 
-# ─── Row 3: Price cuts + Table ───────────────────────────────
-col5, col6 = st.columns([1, 1])
- 
-with col5:
-    st.markdown("#### % with Price Cut by Zip Code")
-    cut_rate = (
-        df.groupby("zipcode")
-        .filter(lambda x: len(x) >= 5)
-        .groupby("zipcode")["has_price_cut"]
-        .mean().mul(100)
-        .sort_values(ascending=False)
-        .head(15)
-        .reset_index()
-    )
-    cut_rate.columns = ["zipcode", "pct_cut"]
-    avg_cut = cut_rate["pct_cut"].mean()
-    cut_rate["zipcode"] = cut_rate["zipcode"].astype(str)
+        fig5.update_xaxes(ticksuffix="%")
+        st.plotly_chart(fig5, use_container_width=True)
     
-    fig5 = px.bar(
-        cut_rate.sort_values("pct_cut"),
-        x="pct_cut", y="zipcode",
-        orientation="h",
-        color="pct_cut",
-        color_continuous_scale=["#00b4d8", "#e07a5f"],
-        labels={"pct_cut": "% with price cut", "zipcode": "Zip"}
+    with col6:
+        st.markdown("#### Listings Table")
+        base_cols  = ["address", "zipcode", "price", "bedrooms",
+                    "sqft", "days_on_market", "property_type", "has_price_cut"]
+        extra_cols = [c for c in ["listing_url"] if c in df.columns]
+        cols_show  = base_cols + extra_cols
+        table      = df[cols_show].copy()
+        table["price"] = table["price"].apply(lambda x: f"${x:,.0f}")
+        table = table.rename(columns={
+            "address":        "Address",
+            "zipcode":        "Zip",
+            "price":          "Price",
+            "bedrooms":       "Beds",
+            "sqft":           "Sqft",
+            "days_on_market": "Days",
+            "property_type":  "Type",
+            "has_price_cut":  "Price cut",
+            **({ "listing_url": "View on Zillow" } if "listing_url" in df.columns else {})
+        })
+        st.dataframe(
+            table,
+            column_config={
+                **({ "View on Zillow": st.column_config.LinkColumn(
+                    "View on Zillow", display_text="🔗 Open"
+                )} if "listing_url" in df.columns else {})
+            },
+            use_container_width=True,
+            height=370
+        )
+    
+    
+    # ─── Property Gallery ─────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("#### 📷 Property Gallery")
+    
+    n_cards   = st.slider("Properties to display", 3, 12, 6, step=3)
+    gallery_df = df[
+        df["photo_url"].notna() &
+        df["listing_url"].notna() &
+        (df["photo_url"] != "") &
+        (df["listing_url"] != "")
+    ].head(n_cards)
+    
+    if len(gallery_df) == 0:
+        st.info("No photos available for the current filters.")
+    else:
+        cols_per_row = 3
+        rows = [gallery_df.iloc[i:i+cols_per_row]
+                for i in range(0, len(gallery_df), cols_per_row)]
+    
+        for row in rows:
+            cols = st.columns(cols_per_row)
+            for col, (_, prop) in zip(cols, row.iterrows()):
+                with col:
+                    try:
+                        st.image(prop["photo_url"], use_container_width=True)
+                    except:
+                        st.markdown("📷 *Photo not available*")
+    
+                    price_fmt = f"${prop['price']:,.0f}"
+                    beds  = int(prop["bedrooms"])  if pd.notna(prop["bedrooms"])  else "—"
+                    baths = int(prop["bathrooms"]) if pd.notna(prop["bathrooms"]) else "—"
+                    sqft  = int(prop["sqft"])      if pd.notna(prop["sqft"])      else "—"
+                    dom   = int(prop["days_on_market"])
+    
+                    st.markdown(f"**{price_fmt}**")
+                    st.markdown(
+                        f"🛏 {beds} beds · 🚿 {baths} baths · "
+                        f"📐 {sqft} sqft · 📅 {dom} days"
+                    )
+                    st.markdown(f"📍 {prop['address']}, {prop['zipcode']}")
+                    st.markdown(
+                        f'<a href="{prop["listing_url"]}" target="_blank">'
+                        f'<button style="width:100%;padding:6px;'
+                        f'background:#00b4d8;color:white;border:none;'
+                        f'border-radius:4px;cursor:pointer;font-size:13px;">'
+                        f'View on Zillow →</button></a>',
+                        unsafe_allow_html=True
+                    )
+                    st.markdown("---")
+    
+    
+    # ─── Footer ──────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown(
+        "Developed by **Gonzalo Medina C.** · Dallas, TX · "
+        "[LinkedIn](https://www.linkedin.com/in/gonzalo-medina09/) · "
+        "[GitHub](https://github.com/gnzme)"
     )
-    fig5.add_vline(
-        x=avg_cut, line_dash="dash",
-        line_color="#f4a261", line_width=1.5,
-        annotation_text=f"Avg {avg_cut:.1f}%",
-        annotation_position="top right"
+
+# ─── Tab 2: Price Predictor ───────────────────────────────────
+with tab2:
+    st.markdown("# 🤖 Dallas House Price Predictor")
+    st.markdown(
+        "Enter property details below and the ML model will estimate "
+        "the market price based on 1,000+ real Dallas listings."
     )
-    fig5.update_layout(
-        coloraxis_showscale = False,
-        margin              = dict(t=20, b=20, l=20, r=20),
-        height              = 400,
-        plot_bgcolor        = "rgba(0,0,0,0)",
-        paper_bgcolor       = "rgba(0,0,0,0)",
-        yaxis               = dict(type="category")
-    )
-    fig5.update_xaxes(ticksuffix="%")
-    st.plotly_chart(fig5, use_container_width=True)
- 
-with col6:
-    st.markdown("#### Listings Table")
-    base_cols  = ["address", "zipcode", "price", "bedrooms",
-                  "sqft", "days_on_market", "property_type", "has_price_cut"]
-    extra_cols = [c for c in ["listing_url"] if c in df.columns]
-    cols_show  = base_cols + extra_cols
-    table      = df[cols_show].copy()
-    table["price"] = table["price"].apply(lambda x: f"${x:,.0f}")
-    table = table.rename(columns={
-        "address":        "Address",
-        "zipcode":        "Zip",
-        "price":          "Price",
-        "bedrooms":       "Beds",
-        "sqft":           "Sqft",
-        "days_on_market": "Days",
-        "property_type":  "Type",
-        "has_price_cut":  "Price cut",
-        **({ "listing_url": "View on Zillow" } if "listing_url" in df.columns else {})
-    })
-    st.dataframe(
-        table,
-        column_config={
-            **({ "View on Zillow": st.column_config.LinkColumn(
-                "View on Zillow", display_text="🔗 Open"
-            )} if "listing_url" in df.columns else {})
-        },
-        use_container_width=True,
-        height=370
-    )
- 
- 
-# ─── Property Gallery ─────────────────────────────────────────
-st.markdown("---")
-st.markdown("#### 📷 Property Gallery")
- 
-n_cards   = st.slider("Properties to display", 3, 12, 6, step=3)
-gallery_df = df[
-    df["photo_url"].notna() &
-    df["listing_url"].notna() &
-    (df["photo_url"] != "") &
-    (df["listing_url"] != "")
-].head(n_cards)
- 
-if len(gallery_df) == 0:
-    st.info("No photos available for the current filters.")
-else:
-    cols_per_row = 3
-    rows = [gallery_df.iloc[i:i+cols_per_row]
-            for i in range(0, len(gallery_df), cols_per_row)]
- 
-    for row in rows:
-        cols = st.columns(cols_per_row)
-        for col, (_, prop) in zip(cols, row.iterrows()):
-            with col:
-                try:
-                    st.image(prop["photo_url"], use_container_width=True)
-                except:
-                    st.markdown("📷 *Photo not available*")
- 
-                price_fmt = f"${prop['price']:,.0f}"
-                beds  = int(prop["bedrooms"])  if pd.notna(prop["bedrooms"])  else "—"
-                baths = int(prop["bathrooms"]) if pd.notna(prop["bathrooms"]) else "—"
-                sqft  = int(prop["sqft"])      if pd.notna(prop["sqft"])      else "—"
-                dom   = int(prop["days_on_market"])
- 
-                st.markdown(f"**{price_fmt}**")
-                st.markdown(
-                    f"🛏 {beds} beds · 🚿 {baths} baths · "
-                    f"📐 {sqft} sqft · 📅 {dom} days"
-                )
-                st.markdown(f"📍 {prop['address']}, {prop['zipcode']}")
-                st.markdown(
-                    f'<a href="{prop["listing_url"]}" target="_blank">'
-                    f'<button style="width:100%;padding:6px;'
-                    f'background:#00b4d8;color:white;border:none;'
-                    f'border-radius:4px;cursor:pointer;font-size:13px;">'
-                    f'View on Zillow →</button></a>',
-                    unsafe_allow_html=True
-                )
-                st.markdown("---")
- 
- 
-# ─── Footer ──────────────────────────────────────────────────
-st.markdown("---")
-st.markdown(
-    "Developed by **Gonzalo Medina C.** · Dallas, TX · "
-    "[LinkedIn](https://www.linkedin.com/in/gonzalo-medina09/) · "
-    "[GitHub](https://github.com/gnzme)"
-)
+
+    if model is None:
+        st.error("Model not found. Run `python model.py` first.")
+        st.stop()
+
+    # Métricas del modelo
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Model R² Score",   f"{stats['r2']:.3f}")
+    m2.metric("Avg Error (MAE)",  f"${stats['mae']:,.0f}")
+    m3.metric("Training samples", "991 properties")
+    st.markdown("---")
+
+    # ── Inputs ───────────────────────────────────────────────
+    col_a, col_b = st.columns([1, 1])
+
+    with col_a:
+        st.markdown("#### Property Details")
+
+        sqft = st.slider(
+            "Square footage (sqft)",
+            min_value = 400,
+            max_value = 8000,
+            value     = 2000,
+            step      = 50
+        )
+        bedrooms = st.selectbox(
+            "Bedrooms",
+            options = [1, 2, 3, 4, 5, 6, 7, 8],
+            index   = 2
+        )
+        bathrooms = st.selectbox(
+            "Bathrooms",
+            options = [1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 6.0],
+            index   = 2
+        )
+        year_built = st.slider(
+            "Year built",
+            min_value = 1920,
+            max_value = 2025,
+            value     = 2005,
+            step      = 1
+        )
+
+    with col_b:
+        st.markdown("#### Location & Type")
+
+        known_zips = sorted(encoders["zipcode"].classes_.tolist())
+        zipcode = st.selectbox(
+            "Zip code",
+            options = known_zips,
+            index   = known_zips.index("75206") if "75206" in known_zips else 0
+        )
+        known_types = sorted(encoders["property_type"].classes_.tolist())
+        type_labels = {
+            "singleFamily": "Single Family",
+            "condo":        "Condo",
+            "townhome":     "Townhome",
+            "multiFamily":  "Multi-Family",
+            "land":         "Land",
+            "manufactured": "Manufactured"
+        }
+        display_types = [type_labels.get(t, t) for t in known_types]
+        type_display  = st.selectbox(
+            "Property type",
+            options = display_types,
+            index   = 0
+        )
+        # Revertir label a valor raw
+        reverse_map   = {v: k for k, v in type_labels.items()}
+        property_type = reverse_map.get(type_display, type_display)
+
+        lot_size = st.slider(
+            "Lot size (acres)",
+            min_value = 0.05,
+            max_value = 2.0,
+            value     = 0.15,
+            step      = 0.05
+        )
+
+    st.markdown("---")
+
+    # ── Predicción ───────────────────────────────────────────
+    if st.button("🔮 Predict Price", use_container_width=True, type="primary"):
+        zip_encoded  = encoders["zipcode"].transform([zipcode])[0]
+
+        type_encoded = encoders["property_type"].transform([property_type])[0]
+
+        input_data = pd.DataFrame([{
+            "sqft":           sqft,
+            "bedrooms":       bedrooms,
+            "bathrooms":      bathrooms,
+            "year_built":     year_built,
+            "zipcode":        zip_encoded,
+            "property_type":  type_encoded,
+            "lot_size_acres": lot_size
+        }])
+
+        predicted = model.predict(input_data)[0]
+
+        # Rango de confianza ±15%
+        low  = predicted * 0.85
+        high = predicted * 1.15
+
+        # Determinar confianza según rango de precio
+        if predicted < 300_000:
+            confidence = "Low (27% avg error in this range)"
+            conf_color = "orange"
+        elif predicted < 600_000:
+            confidence = "Good (17% avg error in this range)"
+            conf_color = "blue"
+        else:
+            confidence = "High (12-14% avg error in this range)"
+            conf_color = "green"
+
+        st.markdown("### 💰 Estimated Price")
+
+        r1, r2, r3 = st.columns(3)
+        r1.metric("Low estimate",  f"${low:,.0f}")
+        r2.metric("Predicted",     f"${predicted:,.0f}", delta="ML model")
+        r3.metric("High estimate", f"${high:,.0f}")
+
+        st.markdown(f"**Model confidence:** :{conf_color}[{confidence}]")
+        st.progress(min(stats['r2'], 1.0))
+
+        # Propiedades similares del dataset
+        st.markdown("---")
+        st.markdown("#### 🏘️ Similar properties in the dataset")
+
+        similar = df_full[
+            (df_full["zipcode"].astype(str) == str(zipcode)) &
+            (df_full["bedrooms"] == bedrooms) &
+            (df_full["price"] > 0)
+        ].sort_values(
+            by="sqft",
+            key=lambda x: abs(x - sqft)
+        ).head(5)
+
+        if len(similar) > 0:
+            cols_show = ["address", "price", "bedrooms",
+                         "sqft", "days_on_market"]
+            show = similar[cols_show].copy()
+            show["price"] = show["price"].apply(lambda x: f"${x:,.0f}")
+            show = show.rename(columns={
+                "address":        "Address",
+                "price":          "Price",
+                "bedrooms":       "Beds",
+                "sqft":           "Sqft",
+                "days_on_market": "Days on market"
+            })
+            st.dataframe(show, use_container_width=True, hide_index=True)
+        else:
+            st.info("No similar properties found for this zip code and bedroom count.")
