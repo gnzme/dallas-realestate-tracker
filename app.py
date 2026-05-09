@@ -129,7 +129,7 @@ with st.sidebar:
     )
  
     st.markdown("---")
-    st.markdown("📅 Data: May 2026")
+    st.markdown(f"📅 Last updated: {scraped_date}")
     st.markdown("🔗 [GitHub](https://github.com/gnzme)")
  
  
@@ -157,10 +157,22 @@ tab1, tab2 = st.tabs(["📊 Market Dashboard", "🤖 Price Predictor"])
 with tab1:
 
     st.markdown("# 🏠 Dallas Real Estate Market Tracker")
+    # Obtener fecha del CSV más reciente
+    import os
+    csv_files = glob.glob("data/dallas_listings_*.csv")
+    if csv_files:
+        latest_file = max(csv_files)
+        filename    = os.path.basename(latest_file)
+        date_str    = filename.replace("dallas_listings_", "").replace(".csv", "")
+        scraped_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}"
+    else:
+        scraped_date = "Unknown"
+
     st.markdown(
         f"Showing **{len(df):,}** properties · "
-        f"Live data via Zillow API · Dallas, TX"
+        f"Scraped from Zillow API · Last updated: **{scraped_date}** · Dallas, TX"
     )
+
     st.markdown("---")
     
     
